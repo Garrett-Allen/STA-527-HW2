@@ -3,27 +3,174 @@ title: "STA 527: Homework 2"
 author: "Garrett Allen"
 format: pdf
 editor: visual
+header-includes:
+    - \usepackage{amsmath, amssymb}
+    - \usepackage{framed}\definecolor{shadecolor}{rgb}{0.949,0.949,0.949}
 ---
 
-## Quarto
-
-Quarto enables you to weave together content and executable code into a finished document. To learn more about Quarto see <https://quarto.org>.
-
-## Running Code
-
-When you click the **Render** button a document will be generated that includes both content and the output of embedded code. You can embed code like this:
-
 ```{r}
-#| label:
+#| label: load-packages
 library(tidyverse)
-library(usethis)
+library(np)
+library(broom)
 ```
 
-You can add options to executable code like this
+# Problem 1: Theory
+
+##a
+
+```{=tex}
+
+\begin{align}
+E(L(Y, \hat{Y}) | X = x) &= E((Y - \hat{Y})^2 | X = x) \\
+&= E(Y^2 | X = x) - 2E(Y\hat{Y} | X = x) + E(\hat{Y}^2) \\
+&= Var(Y | X = x) + E(Y | X = x)^2 -2E(Y | X = x)\hat{Y} + \hat{Y}^2 \\
+&= Var(Y | X = x) + E(Y - \hat{Y} | X = x)^2 \implies \\
+\frac{d}{d\hat{Y}} E(L(Y, \hat{Y})) &= -2(E(Y | X = x) - \hat{Y}) \\
+\end{align}
+```
+Since the expected risk is a convex function, it has a unique local maximum. Thus, setting the above derivative equal to zero, we get that $g^*(x) = E(Y|X = x)$ 
+
+##b
+
+```{=tex}
+
+\begin{align}
+E(L(Y, \hat{Y}) | X = x) &= E(|Y - \hat{Y}| | X = x) \\
+&= \int_{-\infty}^\infty |Y - \hat{Y}| p_{Y|X}(y) dy \\
+
+\end{align}
+
+```
+
+unsure
+
+##c
+
+```{=tex}
+
+\begin{align}
+E(L(Y, \hat{Y}) | X = x) &= E(I(Y \neq \hat{Y}) | X = x) \\
+&=  P(Y = 1 | X = x)I(1 \neq \hat{Y}) + P(Y = 0 | X = x)I(0 \neq \hat{Y})  \\
+
+\end{align}
+
+```
+To minimize the above expression, we want to set the value of $\hat{Y}$ so that
+the indicator paired with the larger probability (between $P(Y = 1 | X = x), P(Y = 0 | X = x)$ is zero. Thus $g^*(x) = \textrm{argmax}_{y' \in {0,1}} P(Y = y' | X = x)$, since such an assignment will cause the indicator $I(y' \neq y') = 0$, which is the indicator paired with $P(Y = y' | X = x)$, the largest probability of the two possible.
+
+# Problem 2: Methodology and Case Study
 
 ```{r}
-#| echo: false
-2 * 2
+#| label: read-data
+fev <-  read.table("fev.txt", header = TRUE)
 ```
 
-The `echo: false` option disables the printing of code (only output is displayed).
+##a
+
+```{r}
+#| label: fitting linear model
+int_lm <- lm(fev ~ smoke - 1, data = fev)
+
+int_lm %>% 
+  tidy() %>% 
+  select(estimate, std.error)
+```
+
+From the above regression, there is evidence that they are correlated, as the estimate is relatively far from zero, and the std.error is small in comparison. 
+
+##b
+
+They do not allow us to conclude that, as not only does our above model have no parametric assumptions about the distribution of our errors/parameters, but in addition, even if we did, we could only conclude that smoking and lung function are correlated in children, since our study is observational and we have not controlled for any potential confounding variables. 
+
+##c
+
+For the first statement, we prove this by applying the function $E(\cdot | Z)$ linearly across both sides of the model equality and then simplifying, using the parametric assumptions that $\epsilon \perp Z$, $E(\epsilon) = 0$.
+
+```{=tex}
+\begin{align}
+Y &= \beta_1X + g^*(Z) + \epsilon \\implies \\
+E(Y|Z) &= E(\beta_1 X | Z) + E(g^*(Z) | Z) + E(\epsilon | Z) \\
+&= \beta_1 E(X | Z) + g^*(Z)E(1 | Z) + E(\epsilon) \\
+&= \beta_1 E(X | Z) + g^*(Z)
+\end{align}
+```
+
+From the above statement, if we multiply both sides by -1 and add $Y$, and then substitute $Y$ for the right side of the model equality:
+
+```{=tex}
+Y - E(Y|Z) &= Y - (\beta_1 E(X | Z) + g^*(Z)) \\
+&= \beta_1X + g^*(Z) + \epsilon - (\beta_1 E(X | Z) + g^*(Z)) \\
+&= \beta_1(X - E(X|Z)) + \epsilon
+```
+
+thus showing both results. 
+
+##d
+
+```{r}
+#| label: fitting models
+
+bandwidth_zy <- npregbw(fev ~ height + age, data = fev)
+
+z_on_y <- npreg(bws = bandwith_zy, residuals = TRUE)
+
+zy_residuals <- z_on_y$resid
+
+bandwith_zx <-  npregbw(smoke ~ height + age, data = fev)
+
+z_on_x <- npreg(bws = bandwith_zx, residuals = TRUE)
+
+zx_residuals <- z_on_x$resid
+
+
+residuals_df <- tibble(y_resid = zy_residuals, 
+                       x_resid = zx_residuals )
+
+rb_model <- lm(y_resid ~ x_resid - 1, data = residuals_df) 
+
+```
+
+
+##e
+
+```{r}
+#| label: plotting-functions
+regress_xz <- tibble(`E(Smoking | Height, Age)` = -z_on_x$mean + 2 , 
+       height = z_on_y$eval$height,
+       age = z_on_y$eval$age) %>% 
+  ggplot(aes(x = height, y = age, color = `E(Smoking | Height, Age)`)) + 
+  geom_point() + 
+  theme_bw() + 
+  scale_color_viridis_c()
+
+regress_yz <- tibble(`E(FEV | Height, Age)` = z_on_y$mean, 
+       height = z_on_y$eval$height,
+       age = z_on_y$eval$age) %>% 
+  ggplot(aes(x = height, y = age, color = `E(FEV | Height, Age)`)) + 
+  geom_point() + 
+  theme_bw() + 
+  scale_color_viridis_c()
+
+library(patchwork)
+
+p3 <- regress_xz / regress_yz + plot_annotation(title = "Regression functions for Y|Z, X|Z",
+                               caption = "1 represents smoker \n 0 represents non-smoker")
+
+p3
+```
+
+##f
+
+```{r}
+rb_model %>% 
+  tidy()
+```
+
+# interpret and add comments 
+
+# Problem 3: Simulations
+
+##a
+
+##b
