@@ -29,7 +29,7 @@ E(L(Y, \hat{Y}) | X = x) &= E((Y - \hat{Y})^2 | X = x) \\
 \frac{d}{d\hat{Y}} E(L(Y, \hat{Y})) &= -2(E(Y | X = x) - \hat{Y}) \\
 \end{align}
 ```
-Since the expected risk is a convex function, it has a unique local maximum. Thus, setting the above derivative equal to zero, we get that $g^*(x) = E(Y|X = x)$ 
+Since the expected risk is a convex function, it has a unique local maximum. Thus, setting the above derivative equal to zero, we get that $g^*(x) = E(Y|X = x)$
 
 ##b
 
@@ -40,9 +40,7 @@ E(L(Y, \hat{Y}) | X = x) &= E(|Y - \hat{Y}| | X = x) \\
 &= \int_{-\infty}^\infty |Y - \hat{Y}| p_{Y|X}(y) dy \\
 
 \end{align}
-
 ```
-
 unsure
 
 ##c
@@ -54,10 +52,8 @@ E(L(Y, \hat{Y}) | X = x) &= E(I(Y \neq \hat{Y}) | X = x) \\
 &=  P(Y = 1 | X = x)I(1 \neq \hat{Y}) + P(Y = 0 | X = x)I(0 \neq \hat{Y})  \\
 
 \end{align}
-
 ```
-To minimize the above expression, we want to set the value of $\hat{Y}$ so that
-the indicator paired with the larger probability (between $P(Y = 1 | X = x), P(Y = 0 | X = x)$ is zero. Thus $g^*(x) = \textrm{argmax}_{y' \in {0,1}} P(Y = y' | X = x)$, since such an assignment will cause the indicator $I(y' \neq y') = 0$, which is the indicator paired with $P(Y = y' | X = x)$, the largest probability of the two possible.
+To minimize the above expression, we want to set the value of $\hat{Y}$ so that the indicator paired with the larger probability (between $P(Y = 1 | X = x), P(Y = 0 | X = x)$ is zero. Thus $g^*(x) = \textrm{argmax}_{y' \in {0,1}} P(Y = y' | X = x)$, since such an assignment will cause the indicator $I(y' \neq y') = 0$, which is the indicator paired with $P(Y = y' | X = x)$, the largest probability of the two possible.
 
 # Problem 2: Methodology and Case Study
 
@@ -77,11 +73,11 @@ int_lm %>%
   select(estimate, std.error)
 ```
 
-From the above regression, there is evidence that they are correlated, as the estimate is relatively far from zero, and the std.error is small in comparison. 
+From the above regression, there is evidence that they are correlated, as the estimate is relatively far from zero, and the std.error is small in comparison.
 
 ##b
 
-They do not allow us to conclude that, as not only does our above model have no parametric assumptions about the distribution of our errors/parameters, but in addition, even if we did, we could only conclude that smoking and lung function are correlated in children, since our study is observational and we have not controlled for any potential confounding variables. 
+They do not allow us to conclude that, as not only does our above model have no parametric assumptions about the distribution of our errors/parameters, but in addition, even if we did, we could only conclude that smoking and lung function are correlated in children, since our study is observational and we have not controlled for any potential confounding variables.
 
 ##c
 
@@ -95,7 +91,6 @@ E(Y|Z) &= E(\beta_1 X | Z) + E(g^*(Z) | Z) + E(\epsilon | Z) \\
 &= \beta_1 E(X | Z) + g^*(Z)
 \end{align}
 ```
-
 From the above statement, if we multiply both sides by -1 and add $Y$, and then substitute $Y$ for the right side of the model equality:
 
 ```{=tex}
@@ -103,8 +98,7 @@ Y - E(Y|Z) &= Y - (\beta_1 E(X | Z) + g^*(Z)) \\
 &= \beta_1X + g^*(Z) + \epsilon - (\beta_1 E(X | Z) + g^*(Z)) \\
 &= \beta_1(X - E(X|Z)) + \epsilon
 ```
-
-thus showing both results. 
+thus showing both results.
 
 ##d
 
@@ -130,7 +124,6 @@ residuals_df <- tibble(y_resid = zy_residuals,
 rb_model <- lm(y_resid ~ x_resid - 1, data = residuals_df) 
 
 ```
-
 
 ##e
 
@@ -167,10 +160,251 @@ rb_model %>%
   tidy()
 ```
 
-# interpret and add comments 
+# interpret and add comments
 
 # Problem 3: Simulations
 
-##a
+## Nonparametric Model
 
-##b
+### NW, Sin(Z)^2
+
+```{r}
+#| label: sinz^2 nw
+
+set.seed(3)
+Z <- runif(100, min = 0, max = 1)
+Y <- sin(Z)^2 + rnorm(100, mean = 0, sd = .05)
+data = tibble(Z, Y)
+
+bw1 <- npregbw(Y ~ Z, data = data)$bw
+bw2 <- npregbw(Y ~ Z, data = data, bwmethod = "cv.aic")$bw
+bw_many <- seq(.05, 1, by = .1)
+
+bandwidths <- c(bw1,bw2,bw_many)
+
+num_models <- length(bandwidths)
+
+models <- c()
+for(bw in bandwidths){
+  models <- c(models, list(npreg(bws = bw,
+                 data = data, 
+                 ydat = Y, 
+                 xdat = Z, 
+                 bwtype = "fixed",
+                 ckertype = "gaussian",
+                 ckeroder = 2)))
+}
+
+predictions <- c()
+for(x in models){
+  predictions <-c(predictions,x["mean"])
+} 
+
+pred_by_bandwidth <- tibble(Predictions = predictions, 
+       bandwidths = bandwidths) %>% 
+  unnest_longer(col = Predictions) %>% 
+  mutate(Z = rep(Z, num_models),
+         Truth = rep(Y, num_models)) %>% 
+  mutate(bandwidths = paste0("Bandwidth = ",round(bandwidths,5))) %>% 
+  pivot_longer(cols = c("Predictions","Truth"), 
+               names_to = "type",
+               values_to = "value")
+
+pred_by_bandwidth
+
+pred_by_bandwidth %>% 
+  ggplot(aes(x = Z, y = value, color = type)) + 
+  facet_wrap(. ~ bandwidths, nrow = 3) + 
+  geom_point() +  
+  theme_bw() + 
+  labs(x = "Z",
+       y = "Y",
+       color = "Type",
+       title = "As bandwidth increases, the predictions become a constant line at the mean",
+       caption = "Nadaraya-Watson Regression"
+  )
+```
+### Local Linear, Sin(Z)^2
+
+```{r}
+#| label: sinz^2 local linear
+
+set.seed(3)
+Z <- runif(100, min = 0, max = 1)
+Y <- sin(Z)^2 + rnorm(100, mean = 0, sd = .05)
+data = tibble(Z, Y)
+
+bw1 <- npregbw(Y ~ Z, data = data, regtype = "ll")$bw
+bw2 <- npregbw(Y ~ Z, data = data, bwmethod = "cv.aic", regtype = "ll")$bw
+bw_many <- seq(.05, 1, by = .1)
+
+bandwidths <- c(bw1,bw2,bw_many)
+
+num_models <- length(bandwidths)
+
+models <- c()
+for(bw in bandwidths){
+  models <- c(models, list(npreg(bws = bw,
+                 data = data, 
+                 ydat = Y, 
+                 xdat = Z, 
+                 bwtype = "fixed",
+                 ckertype = "gaussian",
+                 ckeroder = 2, 
+                 regtype = "ll")))
+}
+
+predictions <- c()
+for(x in models){
+  predictions <-c(predictions,x["mean"])
+} 
+
+pred_by_bandwidth <- tibble(Predictions = predictions, 
+       bandwidths = bandwidths) %>% 
+  unnest_longer(col = Predictions) %>% 
+  mutate(Z = rep(Z, num_models),
+         Truth = rep(Y, num_models)) %>% 
+  mutate(bandwidths = paste0("Bandwidth = ",round(bandwidths,5))) %>% 
+  pivot_longer(cols = c("Predictions","Truth"), 
+               names_to = "type",
+               values_to = "value")
+
+pred_by_bandwidth
+
+pred_by_bandwidth %>% 
+  ggplot(aes(x = Z, y = value, color = type)) + 
+  facet_wrap(. ~ bandwidths, nrow = 3) + 
+  geom_point() +  
+  theme_bw() + 
+  labs(x = "Z",
+       y = "Y",
+       color = "Type",
+       title = "As bandwidth increases, predictions remain roughly the same",
+       caption = "Local Linear Regression"
+  )
+```
+### NW, Z
+
+```{r}
+#| label: generate-sims-p2
+set.seed(3)
+Z <- runif(100, min = 0, max = 1)
+Y <- Z + rnorm(100, mean = 0, sd = .05)
+data = tibble(Z, Y)
+
+bw1 <- npregbw(Y ~ Z, data = data)$bw
+bw2 <- npregbw(Y ~ Z, data = data, bwmethod = "cv.aic")$bw
+bw_many <- seq(.05, 1, by = .1)
+
+bandwidths <- c(bw1,bw2,bw_many)
+
+num_models <- length(bandwidths)
+
+models <- c()
+for(bw in bandwidths){
+  models <- c(models, list(npreg(bws = bw,
+                 data = data, 
+                 ydat = Y, 
+                 xdat = Z, 
+                 bwtype = "fixed",
+                 ckertype = "gaussian",
+                 ckeroder = 2)))
+}
+
+predictions <- c()
+for(x in models){
+  predictions <-c(predictions,x["mean"])
+} 
+
+pred_by_bandwidth <- tibble(Predictions = predictions, 
+       bandwidths = bandwidths) %>% 
+  unnest_longer(col = Predictions) %>% 
+  mutate(Z = rep(Z, num_models),
+         Truth = rep(Y, num_models)) %>% 
+  mutate(bandwidths = paste0("Bandwidth = ",round(bandwidths,5))) %>% 
+  pivot_longer(cols = c("Predictions","Truth"), 
+               names_to = "type",
+               values_to = "value")
+
+pred_by_bandwidth
+
+pred_by_bandwidth %>% 
+  ggplot(aes(x = Z, y = value, color = type)) + 
+  facet_wrap(. ~ bandwidths, nrow = 3) + 
+  geom_point() +  
+  theme_bw() + 
+  labs(x = "Z",
+       y = "Y",
+       color = "Type",
+       title = "As bandwidth increases, the predictions become a constant line at the mean",
+       caption = "Nadaraya-Watson Regression"
+  )
+
+```
+### Local Linear, Z
+
+```{r}
+#| label: generate-sims-p3
+
+set.seed(3)
+Z <- runif(100, min = 0, max = 1)
+Y <- Z + rnorm(100, mean = 0, sd = .05)
+data = tibble(Z, Y)
+
+bw1 <- npregbw(Y ~ Z, data = data, regtype = "ll")$bw
+bw2 <- npregbw(Y ~ Z, data = data, bwmethod = "cv.aic", regtype = "ll")$bw
+bw_many <- seq(.05, 1, by = .1)
+
+bandwidths <- c(bw1,bw2,bw_many)
+
+num_models <- length(bandwidths)
+
+models <- c()
+for(bw in bandwidths){
+  models <- c(models, list(npreg(bws = bw,
+                 data = data, 
+                 ydat = Y, 
+                 xdat = Z, 
+                 bwtype = "fixed",
+                 ckertype = "gaussian",
+                 ckeroder = 2,
+                 regtype = "ll")))
+}
+
+predictions <- c()
+for(x in models){
+  predictions <-c(predictions,x["mean"])
+} 
+
+pred_by_bandwidth <- tibble(Predictions = predictions, 
+       bandwidths = bandwidths) %>% 
+  unnest_longer(col = Predictions) %>% 
+  mutate(Z = rep(Z, num_models),
+         Truth = rep(Y, num_models)) %>% 
+  mutate(bandwidths = paste0("Bandwidth = ",round(bandwidths,5))) %>% 
+  pivot_longer(cols = c("Predictions","Truth"), 
+               names_to = "type",
+               values_to = "value")
+
+pred_by_bandwidth
+
+pred_by_bandwidth %>% 
+  ggplot(aes(x = Z, y = value, color = type)) + 
+  facet_wrap(. ~ bandwidths, nrow = 3) + 
+  geom_point() +  
+  theme_bw() + 
+  labs(x = "Z",
+       y = "Y",
+       color = "Type",
+       title = "As bandwidth increases, the predictions become a constant line at the mean",
+       caption = "Local Linear Regression")
+```
+Why does optimal explode?
+
+## Partially Linear Model
+
+
+
+```{r}
+
+```
