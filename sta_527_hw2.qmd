@@ -107,13 +107,13 @@ thus showing both results.
 
 bandwidth_zy <- npregbw(fev ~ height + age, data = fev)
 
-z_on_y <- npreg(bws = bandwith_zy, residuals = TRUE)
+z_on_y <- npreg(bws = bandwidth_zy, residuals = TRUE)
 
 zy_residuals <- z_on_y$resid
 
-bandwith_zx <-  npregbw(smoke ~ height + age, data = fev)
+bandwidth_zx <-  npregbw(smoke ~ height + age, data = fev)
 
-z_on_x <- npreg(bws = bandwith_zx, residuals = TRUE)
+z_on_x <- npreg(bws = bandwidth_zx, residuals = TRUE)
 
 zx_residuals <- z_on_x$resid
 
@@ -403,8 +403,87 @@ Why does optimal explode?
 
 ## Partially Linear Model
 
+```{r}
+#| label: applying robinson's once
+set.seed(3)
+generate_sims_and_p <- function(seed, beta){
+  set.seed(seed)
+  Z <- runif(100, min = 0, max = 1)
+  X <- runif(100, min = 0, max = 1)
+  epsilon <- rnorm(100, 0, .05)
+  
+  Y <- sin(Z)^2 + epsilon + beta*X
+  
+  sim_data <- tibble(X = X,
+                     Y = Y, 
+                     Z = Z, 
+                     epsilon = epsilon)
+  
+  bandwidth_zy <- npregbw(Y ~ Z, data = sim_data)
+  
+  z_on_y <- npreg(bws = bandwidth_zy, residuals = TRUE)
+  
+  bandwidth_zx <- npregbw(X ~ Z, data = sim_data)
+  
+  z_on_x <- npreg(bws = bandwidth_zx, residuals = TRUE)
+  
+  resid_y <- z_on_y$resid
+  resid_x <- z_on_x$resid
+  
+  lm_sim <- lm(resid_y ~ resid_x - 1, data = sim_data)
+  
+  estimate <- tidy(lm_sim)$estimate
+  p.value <- tidy(lm_sim)$p.value
+  
+  tibble(estimate,p.value)
+}
 
+generate_sims_and_p(seed = 3, beta = 0 )
+```
+P value very large, not significant 
 
 ```{r}
+#| label: repeat 200 times
+results <- tibble(iteration = 0,
+                  estimate = 0, 
+                  p.value = 0 )
+
+for(i in 1:200){
+  
+  iteration_i = generate_sims_and_p(seed = i, beta = 0) %>% 
+    mutate(iteration = i)
+  
+  results <- rbind(results, iteration_i)
+  
+}
+
+results %>% 
+  slice(-1) %>% 
+  mutate(reject = p.value < .05) %>% 
+  summarize(num_reject = sum(reject),
+            expected_reject = 200*.05)
+```
+yes, this does fall close to my expectations
+
+```{r}
+results_2 <- tibble(iteration = 0,
+                  estimate = 0, 
+                  p.value = 0 )
+
+for(i in 1:200){
+  
+  iteration_i = generate_sims_and_p(seed = i, beta = 1) %>% 
+    mutate(iteration = i)
+  
+  results_2 <- rbind(results_2, iteration_i)
+  
+}
+
+results_2 %>% 
+  slice(-1) %>% 
+  mutate(reject = p.value < .05) %>% 
+  summarize(num_reject = sum(reject))
 
 ```
+
+rejected all times, good!
